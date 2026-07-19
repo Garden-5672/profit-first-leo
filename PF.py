@@ -106,8 +106,13 @@ if not check_password():
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 💡 st.secrets 내용을 그대로 가져와서 공식 인증 객체로 변환합니다.
+    # 💡 Secrets에서 구글 키 정보를 복사해옵니다.
     creds_dict = dict(st.secrets["google_creds"])
+    
+    # 🛡️ 텍스트로 박힌 \\n 기호를 파이썬이 인식하는 진짜 엔터(줄바꿈)로 강제 치환합니다!
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    
+    # 최신 공식 라이브러리로 인증을 처리합니다.
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     
     return gspread.authorize(creds)
