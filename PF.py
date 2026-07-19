@@ -6,7 +6,7 @@ import re
 
 # 구글 연동 라이브러리
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # 1. 페이지 설정
 st.set_page_config(
@@ -106,12 +106,12 @@ if not check_password():
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 💡 파일 이름 대신 Streamlit Secrets에 저장한 딕셔너리 데이터를 직접 가져옵니다!
+    # 💡 st.secrets 내용을 그대로 가져와서 공식 인증 객체로 변환합니다.
     creds_dict = dict(st.secrets["google_creds"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     
     return gspread.authorize(creds)
-
+    
 def get_google_sheets(sheet_url):
     try:
         client = get_google_client()
