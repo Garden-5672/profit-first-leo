@@ -105,7 +105,11 @@ if not check_password():
 @st.cache_resource(ttl=3600)  # 1시간 동안 커넥션 캐싱하여 속도 향상
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("google_creds.json", scope)
+    
+    # 💡 파일 이름 대신 Streamlit Secrets에 저장한 딕셔너리 데이터를 직접 가져옵니다!
+    creds_dict = dict(st.secrets["google_creds"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
     return gspread.authorize(creds)
 
 def get_google_sheets(sheet_url):
