@@ -50,11 +50,9 @@ def check_password():
             font-size: 0.95rem;
             margin-bottom: 25px;
         }
-        /* 스트림릿 기본 입력창 포커스 스타일 보완 */
         div[data-baseweb="input"] {
             border-radius: 10px !important;
         }
-        /* 입장 버튼 커스텀 스타일 및 호버 효과 */
         .stButton>button.css-edgvbq, .stButton>button {
             width: 100% !important;
             background: linear-gradient(90deg, #E28F9D 0%, #F1A7B4 100%) !important;
@@ -75,7 +73,6 @@ def check_password():
         </style>
     """, unsafe_allow_html=True)
 
-    # UI 렌더링
     st.markdown("<div class='password-container'>", unsafe_allow_html=True)
     st.markdown("<div class='password-box'>", unsafe_allow_html=True)
     st.markdown("<h2>🐶 비밀번호를 입력하시츄! 🌸</h2>", unsafe_allow_html=True)
@@ -101,22 +98,40 @@ if not check_password():
     st.stop()
 # -------------------------------------------------------------------------
 
-# ⚙️ 구글 스프레드시트 연동 함수 (캐싱 적용으로 연결 최적화)
+# ⚙️ 구글 스프레드시트 연동 함수 (가이드 4단계 적용 및 고도화)
 @st.cache_resource(ttl=3600)  # 1시간 동안 커넥션 캐싱하여 속도 향상
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 💡 Secrets에서 구글 키 정보를 복사해옵니다.
-    creds_dict = dict(st.secrets["google_creds"])
-    
-    # 🛡️ 텍스트로 박힌 \\n 기호를 파이썬이 인식하는 진짜 엔터(줄바꿈)로 강제 치환합니다!
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-    
-    # 최신 공식 라이브러리로 인증을 처리합니다.
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    
-    return gspread.authorize(creds)
-    
+    # 💡 [4단계 적용] Streamlit Secrets에 등록된 JSON 정보를 안전하게 딕셔너리로 재구성합니다.
+    # 비밀 키 내 줄바꿈(\n) 문자 등이 온전하게 인식되도록 보장합니다.
+    try:
+        if "gspread" in st.secrets:
+            secret_source = st.secrets["gspread"]
+        elif "google_creds" in st.secrets:
+            secret_source = st.secrets["google_creds"]
+        else:
+            raise KeyError("Streamlit Secrets에 'gspread' 또는 'google_creds' 설정이 존재하지 않습니다시츄!")
+            
+        credentials_info = {
+            "type": secret_source["type"],
+            "project_id": secret_source["project_id"],
+            "private_key_id": secret_source["private_key_id"],
+            "private_key": secret_source["private_key"].replace("\\n", "\n") if isinstance(secret_source["private_key"], str) else secret_source["private_key"],
+            "client_email": secret_source["client_email"],
+            "client_id": secret_source["client_id"],
+            "auth_uri": secret_source["auth_uri"],
+            "token_uri": secret_source["token_uri"],
+            "auth_provider_x509_cert_url": secret_source["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": secret_source["client_x509_cert_url"]
+        }
+        
+        creds = Credentials.from_service_account_info(credentials_info, scopes=scope)
+        return gspread.authorize(creds)
+    except Exception as auth_err:
+        st.error(f"⚠️ Secrets 인증 정보 파싱 실패: {auth_err}")
+        st.stop()
+
 def get_google_sheets(sheet_url):
     try:
         client = get_google_client()
@@ -283,9 +298,7 @@ with col3: st.metric(label=f"{NAME_TAX} 📝", value=f"{int(calc_tax):,} 원", d
 with col4: st.metric(label=f"{NAME_OPEX} ⚙️", value=f"{int(calc_opex):,} 원", delta=f"{p_opex}%")
 
 
-# -----------------------------------------------------------------------------
 # 5. ✨ 레오의 즉각 평가 (Instant Assessment) 기능 영역
-# -----------------------------------------------------------------------------
 st.markdown("---")
 st.markdown("### 🔍 레오의 12개월 즉각 평가 (Instant Assessment)")
 st.write("지난 12개월 동안의 비즈니스 실제 재무 성과를 바탕으로 **목표 대비 과부족 상태**를 진단해 드립니다.")
@@ -394,9 +407,7 @@ if ratio_sum == 100:
         })
     st.table(pd.DataFrame(summary_rows))
 
-    # -------------------------------------------------------------------------
-    # 💾 초고속 일괄(Batch) 저장 방식으로 대폭 개선된 즉각 평가 단락
-    # -------------------------------------------------------------------------
+    # 💾 즉각 평가 저장 단락
     st.markdown("<div style='background-color:#F5F9FF; border: 2px dashed #BEE3F8; padding:20px; border-radius:10px; margin-top:20px;'>", unsafe_allow_html=True)
     st.markdown("#### 💾 12개월 진단 결과 구글 시트에 기록하기")
     assess_memo = st.text_input("📝 진단 기록용 메모", placeholder="필요하시면 작성해주세요.")
@@ -422,10 +433,7 @@ if ratio_sum == 100:
                         f"{assess_memo} ({action})"
                     ])
                 
-                # 초고속 1회 대량 이체API 호출
                 ws_assess.append_rows(rows_to_append)
-                
-                # 🎉 새로고침 에러를 원천 차단하기 위해 리프레시 없는 toast 메시지 사용
                 st.toast("🎉 '즉각평가' 탭에 1초 만에 진단 데이터 누적이 완료되었시츄! 🐾")
             except Exception as save_err:
                 st.error(f"⚠️ 저장 실패시츄: {save_err}")
