@@ -98,13 +98,10 @@ if not check_password():
     st.stop()
 # -------------------------------------------------------------------------
 
-# ⚙️ 구글 스프레드시트 연동 함수 (가이드 4단계 적용 및 고도화)
-@st.cache_resource(ttl=3600)  # 1시간 동안 커넥션 캐싱하여 속도 향상
+# ⚙️ 구글 스프레드시트 연동 함수
+@st.cache_resource(ttl=3600)
 def get_google_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # 💡 [4단계 적용] Streamlit Secrets에 등록된 JSON 정보를 안전하게 딕셔너리로 재구성합니다.
-    # 비밀 키 내 줄바꿈(\n) 문자 등이 온전하게 인식되도록 보장합니다.
     try:
         if "gspread" in st.secrets:
             secret_source = st.secrets["gspread"]
@@ -268,7 +265,7 @@ with col_right:
     st.markdown("### 💾 실시간 분배 구글 시트에 기록")
     memo = st.text_input("📝 분배 메모", value=f"{current_date} 분배")
     
-    if st.button("🌸 이체 완료 및 구글 시트 저장"):
+    if st.button("🌸 이체 완료 및 구글 시트 저장", use_container_width=True):
         if ws_dist is None:
             st.error("구글 시트 주소가 올바르게 연결되지 않았시츄!")
         elif total_percentage != 100:
@@ -286,6 +283,42 @@ with col_right:
                 memo
             ])
             st.toast("🎉 '실시간분배' 탭에 저장 완료되었시츄! 🐾")
+
+    # 📥 1. 실시간 분배 Excel 다운로드 (열 너비 자동 조절 & 숫자 서식)
+    dist_df = pd.DataFrame([{
+        "날짜": current_date,
+        "총매출액(원)": int(total_revenue),
+        "수익통장(원)": int(calc_profit),
+        "오너보상통장(원)": int(calc_owner),
+        "세금통장(원)": int(calc_tax),
+        "운영비통장(원)": int(calc_opex),
+        "메모": memo
+    }])
+
+    output_dist = io.BytesIO()
+    with pd.ExcelWriter(output_dist, engine='openpyxl') as writer:
+        dist_df.to_excel(writer, index=False, sheet_name='실시간분배')
+        worksheet = writer.sheets['실시간분배']
+        
+        # 열 너비 자동 조절 및 숫자 천단위 쉼표 서식 적용
+        for col in worksheet.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = col[0].column_letter
+            worksheet.column_dimensions[col_letter].width = max(max_len + 5, 12)
+            
+            # 첫 번째 행(헤더) 제외하고 숫자 셀에 쉼표 서식 적용
+            for cell in col[1:]:
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    st.download_button(
+        label="📊 엑셀(.xlsx) 다운로드",
+        data=output_dist.getvalue(),
+        file_name=f"profit_first_distribution_{current_date}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 # 4. 실시간 이체 가이드 매트릭
@@ -412,7 +445,7 @@ if ratio_sum == 100:
     st.markdown("#### 💾 12개월 진단 결과 구글 시트에 기록하기")
     assess_memo = st.text_input("📝 진단 기록용 메모", placeholder="필요하시면 작성해주세요.")
     
-    if st.button("🌸 즉각 평가 결과 구글 시트 저장"):
+    if st.button("🌸 즉각 평가 결과 구글 시트 저장", use_container_width=True):
         if ws_assess is None:
             st.error("구글 시트 주소가 올바르게 연결되지 않았시츄!")
         else:
@@ -437,5 +470,47 @@ if ratio_sum == 100:
                 st.toast("🎉 '즉각평가' 탭에 1초 만에 진단 데이터 누적이 완료되었시츄! 🐾")
             except Exception as save_err:
                 st.error(f"⚠️ 저장 실패시츄: {save_err}")
-                
+
+    # 📥 2. 즉각 평가 Excel 다운로드 (열 너비 자동 조절 & 숫자 서식)
+    assess_records = []
+    for item in eval_data:
+        action = "증가 필요" if item["diff"] < 0 else "감소/통제 필요"
+        assess_records.append({
+            "진단일자": current_date,
+            "12개월 총매출(원)": int(a1_total_rev),
+            "재료비/하도급비(원)": int(a2_material_cost),
+            "실질 순매출(원)": int(a3_real_rev),
+            "진단 항목": item['category'],
+            "실제 지출액(원)": int(item['actual']),
+            "목표 비율": f"{item['ratio']}%",
+            "원칙 목표액(원)": int(item['target']),
+            "차이 금액(원)": int(item['diff']),
+            "처방 조치": action,
+            "비고 메모": assess_memo
+        })
+    assess_df = pd.DataFrame(assess_records)
+
+    output_assess = io.BytesIO()
+    with pd.ExcelWriter(output_assess, engine='openpyxl') as writer:
+        assess_df.to_excel(writer, index=False, sheet_name='즉각평가')
+        worksheet = writer.sheets['즉각평가']
+        
+        # 열 너비 자동 조절 및 숫자 천단위 쉼표 서식 적용
+        for col in worksheet.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = col[0].column_letter
+            worksheet.column_dimensions[col_letter].width = max(max_len + 5, 12)
+            
+            for cell in col[1:]:
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    st.download_button(
+        label="📊 엑셀(.xlsx) 다운로드",
+        data=output_assess.getvalue(),
+        file_name=f"profit_first_assessment_{current_date}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
     st.markdown("</div>", unsafe_allow_html=True)
